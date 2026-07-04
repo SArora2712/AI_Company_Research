@@ -52,9 +52,9 @@ README.md
    pip install -r requirements.txt
    ```
 
-2. Copy `.env.example` to `.env` and fill in your keys:
+2. Create `.env` file and fill in your keys:
    ```bash
-   cp .env.example .env
+   cp .env
    ```
 
    | Variable | Description |
