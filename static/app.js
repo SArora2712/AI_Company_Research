@@ -3,6 +3,12 @@ const emptyStateEl = document.getElementById("emptyState");
 const textInput = document.getElementById("textInput");
 const sendBtn = document.getElementById("sendBtn");
 const modelSelect = document.getElementById("modelSelect");
+const autocompleteList = document.getElementById("autocompleteList");
+const historyList = document.getElementById("historyList");
+const sidebar = document.getElementById("sidebar");
+const sidebarToggle = document.getElementById("sidebarToggle");
+const newResearchBtn = document.getElementById("newResearchBtn");
+const themeToggle = document.getElementById("themeToggle");
 
 const discordModal = document.getElementById("discordModal");
 const discordBtn = document.getElementById("discordBtn");
@@ -14,14 +20,49 @@ const applicantNameInput = document.getElementById("applicantName");
 const applicantEmailInput = document.getElementById("applicantEmail");
 
 let loading = false;
+let acItems = [];
+let acActiveIndex = -1;
+let acDebounce = null;
+
 let discordConfig = JSON.parse(localStorage.getItem("discordConfig") || "{}");
 let applicant = JSON.parse(localStorage.getItem("applicantInfo") || "{}");
+let history = JSON.parse(localStorage.getItem("researchHistory") || "[]");
 
 botTokenInput.value = discordConfig.botToken || "";
 channelIdInput.value = discordConfig.channelId || "";
 applicantNameInput.value = applicant.name || "";
 applicantEmailInput.value = applicant.email || "";
 
+/* ---------------- Theme ---------------- */
+const savedTheme = localStorage.getItem("theme") || "dark";
+document.documentElement.setAttribute("data-theme", savedTheme);
+updateThemeBtn();
+
+themeToggle.onclick = () => {
+  const current = document.documentElement.getAttribute("data-theme");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+  updateThemeBtn();
+};
+
+function updateThemeBtn() {
+  const current = document.documentElement.getAttribute("data-theme");
+  themeToggle.textContent = current === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode";
+}
+
+/* ---------------- Sidebar (mobile) ---------------- */
+sidebarToggle.onclick = () => sidebar.classList.toggle("open");
+
+newResearchBtn.onclick = () => {
+  messagesEl.innerHTML = "";
+  messagesEl.style.display = "none";
+  emptyStateEl.style.display = "flex";
+  textInput.value = "";
+  sidebar.classList.remove("open");
+};
+
+/* ---------------- Discord modal ---------------- */
 discordBtn.onclick = () => (discordModal.style.display = "flex");
 discordCancel.onclick = () => (discordModal.style.display = "none");
 discordSave.onclick = () => {
@@ -36,11 +77,93 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
   chip.addEventListener("click", () => handleSend(chip.dataset.value));
 });
 
+/* ---------------- Autocomplete ---------------- */
+textInput.addEventListener("input", () => {
+  const q = textInput.value.trim();
+  clearTimeout(acDebounce);
+  if (!q) return hideAutocomplete();
+  acDebounce = setTimeout(() => fetchSuggestions(q), 150);
+});
+
 textInput.addEventListener("keydown", (e) => {
+  if (autocompleteList.style.display !== "none" && acItems.length) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      acActiveIndex = Math.min(acActiveIndex + 1, acItems.length - 1);
+      renderAutocomplete();
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      acActiveIndex = Math.max(acActiveIndex - 1, 0);
+      renderAutocomplete();
+      return;
+    }
+    if (e.key === "Enter" && acActiveIndex >= 0) {
+      e.preventDefault();
+      selectSuggestion(acItems[acActiveIndex]);
+      return;
+    }
+    if (e.key === "Escape") {
+      hideAutocomplete();
+      return;
+    }
+  }
   if (e.key === "Enter") handleSend();
 });
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".autocomplete-wrap")) hideAutocomplete();
+});
+
 sendBtn.addEventListener("click", () => handleSend());
 
+async function fetchSuggestions(query) {
+  try {
+    const res = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    acItems = data.results || [];
+    acActiveIndex = -1;
+    renderAutocomplete();
+  } catch (e) {
+    hideAutocomplete();
+  }
+}
+
+function renderAutocomplete() {
+  if (!acItems.length) return hideAutocomplete();
+  autocompleteList.style.display = "block";
+  autocompleteList.innerHTML = acItems
+    .map(
+      (item, i) => `
+      <div class="ac-item ${i === acActiveIndex ? "active" : ""}" data-index="${i}">
+        <div>
+          <div class="ac-name">${escapeHtml(item.name)}</div>
+          <div class="ac-domain">${escapeHtml(item.domain)}</div>
+        </div>
+        <div class="ac-category">${escapeHtml(item.category)}</div>
+      </div>`
+    )
+    .join("");
+
+  autocompleteList.querySelectorAll(".ac-item").forEach((el) => {
+    el.addEventListener("click", () => selectSuggestion(acItems[Number(el.dataset.index)]));
+  });
+}
+
+function selectSuggestion(item) {
+  hideAutocomplete();
+  handleSend(item.domain);
+}
+
+function hideAutocomplete() {
+  autocompleteList.style.display = "none";
+  autocompleteList.innerHTML = "";
+  acItems = [];
+  acActiveIndex = -1;
+}
+
+/* ---------------- Chat rendering ---------------- */
 function showMessages() {
   emptyStateEl.style.display = "none";
   messagesEl.style.display = "flex";
@@ -70,7 +193,23 @@ function addProgressMessage(text) {
   return div;
 }
 
-function addReportCard(report) {
+function gaugeCircle(value, id) {
+  const v = Math.max(0, Math.min(100, Number(value) || 0));
+  const r = 30;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - v / 100);
+  return `
+    <div class="gauge-ring">
+      <svg width="76" height="76" viewBox="0 0 76 76">
+        <circle class="ring-bg" cx="38" cy="38" r="${r}"></circle>
+        <circle class="ring-fg" id="${id}" cx="38" cy="38" r="${r}"
+          stroke-dasharray="${c}" stroke-dashoffset="${c}"></circle>
+      </svg>
+      <div class="gauge-value">${v}</div>
+    </div>`;
+}
+
+function addReportCard(report, cached) {
   showMessages();
   const card = document.createElement("div");
   card.className = "report-card";
@@ -92,13 +231,36 @@ function addReportCard(report) {
     )
     .join("");
 
+  const insight = report.insight || {};
+  const hasInsight =
+    insight.overallScore !== undefined ||
+    insight.marketPosition !== undefined ||
+    insight.digitalPresence !== undefined ||
+    insight.growthPotential !== undefined;
+
+  const gaugeUid = Math.random().toString(36).slice(2, 8);
+  const insightHtml = hasInsight
+    ? `
+    <div class="section-title">AI Insight Score</div>
+    <div class="insight-box">
+      ${insight.insightSummary ? `<div class="insight-summary">${escapeHtml(insight.insightSummary)}</div>` : ""}
+      <div class="gauge-grid">
+        <div class="gauge">${gaugeCircle(insight.overallScore, `g-overall-${gaugeUid}`)}<div class="gauge-label">Overall</div></div>
+        <div class="gauge">${gaugeCircle(insight.marketPosition, `g-market-${gaugeUid}`)}<div class="gauge-label">Market Position</div></div>
+        <div class="gauge">${gaugeCircle(insight.digitalPresence, `g-digital-${gaugeUid}`)}<div class="gauge-label">Digital Presence</div></div>
+        <div class="gauge">${gaugeCircle(insight.growthPotential, `g-growth-${gaugeUid}`)}<div class="gauge-label">Growth Potential</div></div>
+      </div>
+    </div>`
+    : "";
+
   card.innerHTML = `
-    <h2>${escapeHtml(report.companyName || "Unknown Company")}</h2>
+    <h2>${escapeHtml(report.companyName || "Unknown Company")}${cached ? '<span class="cached-badge">⚡ from cache</span>' : ""}</h2>
     ${report.website ? `<a class="website" href="${escapeAttr(report.website)}" target="_blank" rel="noreferrer">${escapeHtml(report.website)}</a>` : ""}
     <div class="report-grid">
       <div><span class="label">Phone: </span>${escapeHtml(report.phone || "N/A")}</div>
       <div><span class="label">Address: </span>${escapeHtml(report.address || "N/A")}</div>
     </div>
+    ${insightHtml}
     ${report.summary ? `<div class="section-title">Summary</div><p style="font-size:13.5px;line-height:1.6;">${escapeHtml(report.summary)}</p>` : ""}
     ${productsHtml ? `<div class="section-title">Products / Services</div><div class="pill-list">${productsHtml}</div>` : ""}
     ${painHtml ? `<div class="section-title">AI-Generated Pain Points</div><ul class="pain-list">${painHtml}</ul>` : ""}
@@ -114,32 +276,125 @@ function addReportCard(report) {
   messagesEl.appendChild(card);
   scrollToBottom();
 
+  // Animate gauges in on next frame (so the CSS transition actually plays)
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const r = 30;
+      const c = 2 * Math.PI * r;
+      const setRing = (id, value) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const v = Math.max(0, Math.min(100, Number(value) || 0));
+        el.style.strokeDashoffset = c * (1 - v / 100);
+      };
+      setRing(`g-overall-${gaugeUid}`, insight.overallScore);
+      setRing(`g-market-${gaugeUid}`, insight.marketPosition);
+      setRing(`g-digital-${gaugeUid}`, insight.digitalPresence);
+      setRing(`g-growth-${gaugeUid}`, insight.growthPotential);
+    });
+  });
+
+  addToHistory(report);
+
   // Fire-and-forget Discord notification if configured
   if (discordConfig.botToken && discordConfig.channelId) {
     sendToDiscord(report).catch((e) => console.warn("Discord send failed:", e));
   }
 }
 
+/* ---------------- History sidebar ---------------- */
+function addToHistory(report) {
+  const entry = {
+    id: Date.now().toString(36),
+    companyName: report.companyName || "Unknown",
+    overallScore: report.insight && report.insight.overallScore,
+    report,
+  };
+  history = history.filter((h) => h.companyName.toLowerCase() !== entry.companyName.toLowerCase());
+  history.unshift(entry);
+  history = history.slice(0, 20);
+  localStorage.setItem("researchHistory", JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  if (!history.length) {
+    historyList.innerHTML = `<div class="history-empty">Your researched companies will show up here.</div>`;
+    return;
+  }
+  historyList.innerHTML = history
+    .map(
+      (h) => `
+      <div class="history-item" data-id="${h.id}">
+        <span class="h-name">${escapeHtml(h.companyName)}</span>
+        ${h.overallScore !== undefined && h.overallScore !== null ? `<span class="h-score">${h.overallScore}</span>` : ""}
+        <button class="h-remove" data-remove="${h.id}" title="Remove">✕</button>
+      </div>`
+    )
+    .join("");
+
+  historyList.querySelectorAll(".history-item").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.dataset.remove) return;
+      const entry = history.find((h) => h.id === el.dataset.id);
+      if (entry) {
+        messagesEl.innerHTML = "";
+        addTextMessage("user", entry.companyName);
+        addReportCard(entry.report, false);
+        sidebar.classList.remove("open");
+      }
+    });
+  });
+  historyList.querySelectorAll(".h-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      history = history.filter((h) => h.id !== btn.dataset.remove);
+      localStorage.setItem("researchHistory", JSON.stringify(history));
+      renderHistory();
+    });
+  });
+}
+renderHistory();
+
+/* ---------------- Research flow ---------------- */
 async function handleSend(overrideValue) {
   const query = (overrideValue ?? textInput.value).trim();
   if (!query || loading) return;
 
+  hideAutocomplete();
   addTextMessage("user", query);
   textInput.value = "";
   loading = true;
   sendBtn.disabled = true;
-  const progressEl = addProgressMessage("Searching & crawling the web…");
+
+  const progressMessages = [
+    "Searching Serper.dev...",
+    "Finding official website...",
+    "Crawling website pages...",
+    "Analyzing with AI...",
+    "Finding competitors...",
+    "Generating PDF..."
+  ];
+
+  let progressEl = addProgressMessage(progressMessages[0]);
 
   try {
+    // Simulate step updates (you can make this more real later)
+    for (let i = 0; i < progressMessages.length; i++) {
+      await new Promise(r => setTimeout(r, 600));
+      if (progressEl) progressEl.innerHTML = `<div class="spinner"></div> <span>${progressMessages[i]}</span>`;
+    }
+
     const res = await fetch("/api/research", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ input: query, model: modelSelect.value }),
     });
+
     const data = await res.json();
     progressEl.remove();
-    if (!res.ok) throw new Error(data.error || "Something went wrong");
-    addReportCard(data.result);
+    if (!res.ok) throw new Error(data.error || "Research failed");
+    addReportCard(data.result, !!data.cached);
   } catch (err) {
     progressEl.remove();
     addTextMessage("ai", `⚠️ ${err.message}`);
@@ -180,22 +435,32 @@ async function handleDownload(report, btn) {
 }
 
 async function sendToDiscord(report) {
-  const blob = await generatePdfBlob(report);
-  const buffer = await blob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  if (!discordConfig.botToken || !discordConfig.channelId) return;
 
-  await fetch("/api/discord", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...discordConfig,
-      applicantName: applicant.name,
-      applicantEmail: applicant.email,
-      companyName: report.companyName,
-      companyWebsite: report.website,
-      pdfBase64: base64,
-    }),
-  });
+  try {
+    const blob = await generatePdfBlob(report);
+    const buffer = await blob.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+
+    const res = await fetch("/api/discord", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        botToken: discordConfig.botToken,
+        channelId: discordConfig.channelId,
+        applicantName: applicant.name || "N/A",
+        applicantEmail: applicant.email || "N/A",
+        companyName: report.companyName,
+        companyWebsite: report.website,
+        pdfBase64: base64,
+      }),
+    });
+
+    const data = await res.json();
+    if (!data.ok) console.warn("Discord send failed:", data);
+  } catch (e) {
+    console.warn("Discord notification failed:", e);
+  }
 }
 
 function escapeHtml(str) {

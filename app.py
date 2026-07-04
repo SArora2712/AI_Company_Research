@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, send_file
 from io import BytesIO
 
+from lib.companies import get_suggestions
 from lib.crawler import crawl_website
 from lib.openrouter import ask_openrouter, extract_json
 from lib.pdf_gen import generate_pdf
@@ -16,6 +17,11 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
+
+# Simple in-memory cache so re-researching the same company within a session
+# is instant instead of re-crawling + re-calling the AI model. Keyed by
+# (lowercased input, model). Cleared on server restart — intentional, no DB.
+_RESEARCH_CACHE = {}
 
 
 def looks_like_url(text):
@@ -38,6 +44,11 @@ def research():
 
     if not user_input:
         return jsonify({"error": "Please provide a company name or website URL."}), 400
+
+    cache_key = (user_input.lower(), model)
+    if cache_key in _RESEARCH_CACHE:
+        cached = _RESEARCH_CACHE[cache_key]
+        return jsonify({**cached, "cached": True})
 
     try:
         if looks_like_url(user_input):
@@ -100,9 +111,17 @@ Return ONLY valid JSON matching exactly this schema:
   "summary": string,
   "products": [string],
   "painPoints": [string],
-  "competitors": [{{"name": string, "website": string}}]
+  "competitors": [{{"name": string, "website": string}}],
+  "insight": {{
+    "overallScore": integer (0-100),
+    "marketPosition": integer (0-100),
+    "digitalPresence": integer (0-100),
+    "growthPotential": integer (0-100),
+    "insightSummary": string (2-3 sentences explaining the scores)
+  }}
 }}
 Identify 3-6 real competitors operating in the same industry/country with similar products, using the search snippets and your knowledge. Keep painPoints to 3-6 sharp, sales-relevant insights an outbound sales rep could use.
+For the "insight" scores: base them on what you can reasonably infer from the crawled content and search snippets (site quality/freshness suggests digitalPresence, competitive density and brand signals suggest marketPosition, hiring/expansion/product-launch signals suggest growthPotential, and overallScore is a holistic average). Never leave these blank — give your best reasoned estimate even with partial data.
 """
 
         ai_raw = ask_openrouter(model, system_prompt, user_prompt)
@@ -118,19 +137,30 @@ Identify 3-6 real competitors operating in the same industry/country with simila
                 "products": [],
                 "painPoints": [],
                 "competitors": [],
+                "insight": {},
             }
 
         structured["website"] = structured.get("website") or website
         structured["companyName"] = structured.get("companyName") or company_guess
+        structured["insight"] = structured.get("insight") or {}
 
-        return jsonify({
+        response_payload = {
             "result": structured,
             "crawledPages": [{"url": p["url"], "title": p["title"]} for p in pages],
             "modelUsed": model,
-        })
+        }
+
+        _RESEARCH_CACHE[cache_key] = response_payload
+        return jsonify({**response_payload, "cached": False})
 
     except Exception as e:
         return jsonify({"error": str(e) or "Research failed"}), 500
+
+
+@app.route("/api/suggestions")
+def suggestions():
+    query = (request.args.get("q") or "").strip()
+    return jsonify({"results": get_suggestions(query, limit=8)})
 
 
 @app.route("/api/pdf", methods=["POST"])
@@ -192,4 +222,4 @@ def discord_notify():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)

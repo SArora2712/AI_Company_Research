@@ -8,39 +8,61 @@
 </head>
 <body>
   <div class="app-shell">
-    <div class="topbar">
-      <div class="brand"><span class="dot"></span> Company Research Assistant</div>
-      <div class="topbar-actions">
-        <select id="modelSelect" class="model-select">
-          <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
-          <option value="openai/gpt-4o">openai/gpt-4o</option>
-          <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet</option>
-          <option value="google/gemini-flash-1.5">google/gemini-flash-1.5</option>
-          <option value="meta-llama/llama-3.1-70b-instruct">meta-llama/llama-3.1-70b-instruct</option>
-          <option value="mistralai/mistral-large">mistralai/mistral-large</option>
-        </select>
-        <button id="discordBtn" class="icon-btn">⚙ Discord Settings</button>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand"><span class="dot"></span> Company<br/>Research AI</div>
+        <button id="newResearchBtn" class="new-btn">+ New Research</button>
       </div>
-    </div>
+      <div class="sidebar-section-label">Recent Research</div>
+      <div id="historyList" class="history-list">
+        <div class="history-empty">Your researched companies will show up here.</div>
+      </div>
+      <div class="sidebar-footer">
+        <button id="themeToggle" class="icon-btn full-width">🌙 Dark Mode</button>
+      </div>
+    </aside>
 
-    <div class="main">
-      <div class="chat-area">
-        <div id="emptyState" class="empty-state">
-          <h1>🔎 Research any company in seconds</h1>
-          <p>Enter a company name or website URL to get an AI-powered report with competitors and a downloadable PDF.</p>
-          <div class="suggestions">
-            <button class="suggestion-chip" data-value="Stripe">Stripe</button>
-            <button class="suggestion-chip" data-value="https://tesla.com">https://tesla.com</button>
-            <button class="suggestion-chip" data-value="Notion">Notion</button>
-            <button class="suggestion-chip" data-value="Microsoft">Microsoft</button>
-          </div>
+    <div class="app-main">
+      <div class="topbar">
+        <button id="sidebarToggle" class="icon-btn mobile-only">☰</button>
+        <div class="topbar-actions">
+          <select id="modelSelect" class="model-select">
+            <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+            <option value="openai/gpt-4o">openai/gpt-4o</option>
+            <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet</option>
+            <option value="google/gemini-flash-1.5">google/gemini-flash-1.5</option>
+            <option value="meta-llama/llama-3.1-70b-instruct">meta-llama/llama-3.1-70b-instruct</option>
+            <option value="mistralai/mistral-large">mistralai/mistral-large</option>
+          </select>
+          <button id="discordBtn" class="icon-btn">⚙ Discord Settings</button>
         </div>
+      </div>
 
-        <div id="messages" class="messages" style="display:none;"></div>
+      <div class="main">
+        <div class="chat-area">
+          <div id="emptyState" class="empty-state">
+            <h1>🔎 Research any company in seconds</h1>
+            <p>Enter a company name or website URL to get an AI-powered report with an Insight Score, competitors, and a downloadable PDF.</p>
+            <div class="suggestions">
+              <button class="suggestion-chip" data-value="Stripe">Stripe</button>
+              <button class="suggestion-chip" data-value="https://tesla.com">https://tesla.com</button>
+              <button class="suggestion-chip" data-value="Notion">Notion</button>
+              <button class="suggestion-chip" data-value="Microsoft">Microsoft</button>
+            </div>
+          </div>
 
-        <div class="input-bar">
-          <input id="textInput" class="text-input" placeholder="Enter a company name or website URL…" />
-          <button id="sendBtn" class="send-btn">Research</button>
+          <div id="messages" class="messages" style="display:none;"></div>
+
+          <div class="input-bar-wrap">
+            <div class="autocomplete-wrap">
+              <div id="autocompleteList" class="autocomplete-list" style="display:none;"></div>
+              <div class="input-bar">
+                <input id="textInput" class="text-input" placeholder="Enter a company name or website URL…" autocomplete="off" />
+                <button id="sendBtn" class="send-btn">Research</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
