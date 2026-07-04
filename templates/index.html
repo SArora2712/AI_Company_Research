@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Company Research Assistant</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span> Company Research Assistant</div>
+      <div class="topbar-actions">
+        <select id="modelSelect" class="model-select">
+          <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+          <option value="openai/gpt-4o">openai/gpt-4o</option>
+          <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet</option>
+          <option value="google/gemini-flash-1.5">google/gemini-flash-1.5</option>
+          <option value="meta-llama/llama-3.1-70b-instruct">meta-llama/llama-3.1-70b-instruct</option>
+          <option value="mistralai/mistral-large">mistralai/mistral-large</option>
+        </select>
+        <button id="discordBtn" class="icon-btn">⚙ Discord Settings</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="chat-area">
+        <div id="emptyState" class="empty-state">
+          <h1>🔎 Research any company in seconds</h1>
+          <p>Enter a company name or website URL to get an AI-powered report with competitors and a downloadable PDF.</p>
+          <div class="suggestions">
+            <button class="suggestion-chip" data-value="Stripe">Stripe</button>
+            <button class="suggestion-chip" data-value="https://tesla.com">https://tesla.com</button>
+            <button class="suggestion-chip" data-value="Notion">Notion</button>
+            <button class="suggestion-chip" data-value="Microsoft">Microsoft</button>
+          </div>
+        </div>
+
+        <div id="messages" class="messages" style="display:none;"></div>
+
+        <div class="input-bar">
+          <input id="textInput" class="text-input" placeholder="Enter a company name or website URL…" />
+          <button id="sendBtn" class="send-btn">Research</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="discordModal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <h3>Discord Integration & Applicant Info</h3>
+      <label>Discord Bot Token</label>
+      <input id="botToken" type="password" placeholder="Bot token" />
+      <label>Discord Channel ID</label>
+      <input id="channelId" placeholder="Channel ID" />
+      <label>Applicant Name</label>
+      <input id="applicantName" />
+      <label>Applicant Email</label>
+      <input id="applicantEmail" />
+      <div class="modal-actions">
+        <button id="discordCancel" class="btn-secondary">Cancel</button>
+        <button id="discordSave" class="btn-primary">Save Configuration</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
