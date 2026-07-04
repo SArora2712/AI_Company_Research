@@ -1,17 +1,10 @@
-"""PDF report generation using reportlab.
+"""PDF report generation using reportlab - Clean version"""
 
-Rebuilt to fix a real bug in the original fpdf2 implementation: fpdf2's
-`output()` accepts a destination *filename*, not reliably a file-like object,
-across versions — passing a BytesIO worked on some installs and silently
-produced an empty/corrupt file on others (this was the "PDF doesn't work
-locally" bug). reportlab's SimpleDocTemplate writing straight into a BytesIO
-buffer is a supported, stable code path, so this version is fixed for good.
-"""
 from datetime import datetime
 from io import BytesIO
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -37,8 +30,6 @@ LIGHT_BG = colors.HexColor("#f4f3fb")
 
 
 class ScoreBar(Flowable):
-    """A small horizontal progress bar used for the Insight Score section."""
-
     def __init__(self, label, score, width=160 * mm, height=6 * mm):
         super().__init__()
         self.label = label
@@ -73,11 +64,11 @@ def _safe(text):
 
 def _styles():
     ss = getSampleStyleSheet()
-    ss.add(ParagraphStyle(name="H1", fontName="Helvetica-Bold", fontSize=20, textColor=DARK, spaceAfter=2))
+    ss.add(ParagraphStyle(name="H1", fontName="Helvetica-Bold", fontSize=22, textColor=DARK, spaceAfter=8, alignment=TA_CENTER))
     ss.add(ParagraphStyle(name="Meta", fontName="Helvetica", fontSize=9, textColor=GRAY, spaceAfter=10))
-    ss.add(ParagraphStyle(name="CompanyName", fontName="Helvetica-Bold", fontSize=16, textColor=DARK, spaceAfter=2))
+    ss.add(ParagraphStyle(name="CompanyName", fontName="Helvetica-Bold", fontSize=18, textColor=DARK, spaceAfter=8))
     ss.add(ParagraphStyle(name="SubInfo", fontName="Helvetica", fontSize=10.5, textColor=colors.HexColor("#333333"), leading=15))
-    ss.add(ParagraphStyle(name="SectionTitle", fontName="Helvetica-Bold", fontSize=12.5, textColor=BRAND, spaceBefore=14, spaceAfter=6))
+    ss.add(ParagraphStyle(name="SectionTitle", fontName="Helvetica-Bold", fontSize=13, textColor=BRAND, spaceBefore=16, spaceAfter=8))
     ss.add(ParagraphStyle(name="Body", fontName="Helvetica", fontSize=10.5, textColor=colors.HexColor("#333333"), leading=15, alignment=TA_LEFT))
     ss.add(ParagraphStyle(name="ListItem", fontName="Helvetica", fontSize=10.5, textColor=colors.HexColor("#333333"), leading=15))
     return ss
@@ -97,7 +88,7 @@ def _header_footer(canv: canvas.Canvas, doc):
 def generate_pdf(data: dict) -> bytes:
     styles = _styles()
     buf = BytesIO()
-    
+
     doc = BaseDocTemplate(
         buf,
         pagesize=A4,
@@ -110,20 +101,25 @@ def generate_pdf(data: dict) -> bytes:
     doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=_header_footer)])
 
     story = []
-    story.append(Paragraph(f"Generated on {datetime.now().strftime('%d %b %Y, %H:%M')}", styles["Meta"]))
-    story.append(Paragraph("Company Research Report", styles["H1"]))
-    story.append(Paragraph(f"Generated on {datetime.now().strftime('%d %b %Y, %H:%M')}", styles["Meta"]))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e0e0e0"), spaceAfter=10))
 
+    # Title only
+    story.append(Paragraph("Company Research Report", styles["H1"]))
+    story.append(Spacer(1, 12)) 
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e0e0e0"), spaceAfter=12))
+
+    # Company Name + Info
     story.append(Paragraph(_safe(data.get("companyName") or "Unknown Company"), styles["CompanyName"]))
+    story.append(Spacer(1, 8))  # Good spacing after company name
+
     story.append(Paragraph(
         f"<b>Website:</b> {_safe(data.get('website') or 'N/A')}<br/>"
         f"<b>Phone:</b> {_safe(data.get('phone') or 'N/A')}<br/>"
         f"<b>Address:</b> {_safe(data.get('address') or 'N/A')}",
         styles["SubInfo"],
     ))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1,10))
 
+    # AI Insight Score
     insight = data.get("insight") or {}
     if insight:
         story.append(Paragraph("AI Insight Score", styles["SectionTitle"]))
@@ -136,13 +132,15 @@ def generate_pdf(data: dict) -> bytes:
         if insight.get("growthPotential") is not None:
             story.append(ScoreBar("Growth Potential", insight.get("growthPotential")))
         if insight.get("insightSummary"):
-            story.append(Spacer(1, 6))
+            story.append(Spacer(1, 8))
             story.append(Paragraph(_safe(insight["insightSummary"]), styles["Body"]))
 
+    # Summary
     if data.get("summary"):
         story.append(Paragraph("Company Summary", styles["SectionTitle"]))
         story.append(Paragraph(_safe(data["summary"]), styles["Body"]))
 
+    # Products
     products = data.get("products") or []
     if products:
         story.append(Paragraph("Products / Services", styles["SectionTitle"]))
@@ -151,6 +149,7 @@ def generate_pdf(data: dict) -> bytes:
             bulletType="bullet", start="•",
         ))
 
+    # Pain Points
     pain_points = data.get("painPoints") or []
     if pain_points:
         story.append(Paragraph("AI-Generated Pain Points", styles["SectionTitle"]))
@@ -159,6 +158,7 @@ def generate_pdf(data: dict) -> bytes:
             bulletType="bullet", start="•",
         ))
 
+    # Competitors
     competitors = data.get("competitors") or []
     if competitors:
         story.append(Paragraph("Competitor Analysis", styles["SectionTitle"]))

@@ -306,54 +306,57 @@ function addReportCard(report, cached) {
 function addToHistory(report) {
   const entry = {
     id: Date.now().toString(36),
+    timestamp: Date.now(),
     companyName: report.companyName || "Unknown",
-    overallScore: report.insight && report.insight.overallScore,
-    report,
+    overallScore: report.insight?.overallScore,
+    report: report
   };
-  history = history.filter((h) => h.companyName.toLowerCase() !== entry.companyName.toLowerCase());
+
+  history = history.filter(h => h.companyName.toLowerCase() !== entry.companyName.toLowerCase());
   history.unshift(entry);
-  history = history.slice(0, 20);
+  history = history.slice(0, 12);
   localStorage.setItem("researchHistory", JSON.stringify(history));
   renderHistory();
 }
 
 function renderHistory() {
   if (!history.length) {
-    historyList.innerHTML = `<div class="history-empty">Your researched companies will show up here.</div>`;
+    historyList.innerHTML = `<div class="history-empty">Your researched companies will appear here.</div>`;
     return;
   }
-  historyList.innerHTML = history
-    .map(
-      (h) => `
-      <div class="history-item" data-id="${h.id}">
-        <span class="h-name">${escapeHtml(h.companyName)}</span>
-        ${h.overallScore !== undefined && h.overallScore !== null ? `<span class="h-score">${h.overallScore}</span>` : ""}
-        <button class="h-remove" data-remove="${h.id}" title="Remove">✕</button>
-      </div>`
-    )
-    .join("");
 
-  historyList.querySelectorAll(".history-item").forEach((el) => {
+  historyList.innerHTML = history.map(h => `
+    <div class="history-item" data-id="${h.id}">
+      <div class="h-main">
+        <span class="h-name">${escapeHtml(h.companyName)}</span>
+        ${h.overallScore ? `<span class="h-score">${h.overallScore}</span>` : ''}
+      </div>
+      <button class="h-remove" data-remove="${h.id}" title="Remove">✕</button>
+    </div>
+  `).join("");
+
+  historyList.querySelectorAll(".history-item").forEach(el => {
     el.addEventListener("click", (e) => {
-      if (e.target.dataset.remove) return;
-      const entry = history.find((h) => h.id === el.dataset.id);
+      if (e.target.classList.contains("h-remove")) return;
+      const entry = history.find(h => h.id === el.dataset.id);
       if (entry) {
         messagesEl.innerHTML = "";
         addTextMessage("user", entry.companyName);
-        addReportCard(entry.report, false);
-        sidebar.classList.remove("open");
+        addReportCard(entry.report, true);
       }
     });
   });
-  historyList.querySelectorAll(".h-remove").forEach((btn) => {
+
+  historyList.querySelectorAll(".h-remove").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      history = history.filter((h) => h.id !== btn.dataset.remove);
+      history = history.filter(h => h.id !== btn.dataset.remove);
       localStorage.setItem("researchHistory", JSON.stringify(history));
       renderHistory();
     });
   });
 }
+ 
 renderHistory();
 
 /* ---------------- Research flow ---------------- */
@@ -367,36 +370,45 @@ async function handleSend(overrideValue) {
   loading = true;
   sendBtn.disabled = true;
 
-  const progressMessages = [
-    "Searching Serper.dev...",
+  const steps = [
+    "Searching with Serper.dev...",
     "Finding official website...",
-    "Crawling website pages...",
+    "Crawling key pages...",
     "Analyzing with AI...",
-    "Finding competitors...",
-    "Generating PDF..."
+    "Researching competitors...",
+    "Generating report & PDF..."
   ];
 
-  let progressEl = addProgressMessage(progressMessages[0]);
+  let progressEl = addProgressMessage(steps[0]);
+  let stepIndex = 0;
+
+  // Faster step updates
+  const progressInterval = setInterval(() => {
+    stepIndex++;
+    if (stepIndex < steps.length && progressEl) {
+      progressEl.innerHTML = `<div class="spinner"></div> <span>${steps[stepIndex]}</span>`;
+    } else {
+      clearInterval(progressInterval);
+    }
+  }, 550);   // Faster than before
 
   try {
-    // Simulate step updates (you can make this more real later)
-    for (let i = 0; i < progressMessages.length; i++) {
-      await new Promise(r => setTimeout(r, 600));
-      if (progressEl) progressEl.innerHTML = `<div class="spinner"></div> <span>${progressMessages[i]}</span>`;
-    }
-
     const res = await fetch("/api/research", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ input: query, model: modelSelect.value }),
     });
 
+    clearInterval(progressInterval);
+    if (progressEl) progressEl.remove();
+
     const data = await res.json();
-    progressEl.remove();
     if (!res.ok) throw new Error(data.error || "Research failed");
+
     addReportCard(data.result, !!data.cached);
   } catch (err) {
-    progressEl.remove();
+    clearInterval(progressInterval);
+    if (progressEl) progressEl.remove();
     addTextMessage("ai", `⚠️ ${err.message}`);
   } finally {
     loading = false;
