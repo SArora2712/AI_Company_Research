@@ -1,4 +1,5 @@
-"""Wrapper around OpenRouter's chat completions endpoint."""
+"""Improved OpenRouter wrapper with better model support."""
+
 import json
 import os
 import re
@@ -16,39 +17,55 @@ def _api_key():
 
 
 def ask_openrouter(model, system_prompt, user_prompt):
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 2000,
+    }
+
+    # Some models need extra parameters
+    if "claude" in model.lower():
+        payload["temperature"] = 0.4
+    elif "gemini" in model.lower():
+        payload["temperature"] = 0.3
+
     res = requests.post(
         OPENROUTER_URL,
         headers={
             "Authorization": f"Bearer {_api_key()}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://relu-company-research.example",
-            "X-Title": "Relu Company Research Assistant",
+            "HTTP-Referer": "https://company-research-assistant.example",
+            "X-Title": "Relu Company Research",
         },
-        json={
-            "model": model or "openai/gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.3,
-        },
-        timeout=60,
+        json=payload,
+        timeout=90,   # Increased timeout for slower models
     )
+
     if not res.ok:
-        raise RuntimeError(f"OpenRouter request failed ({res.status_code}): {res.text[:500]}")
+        raise RuntimeError(f"OpenRouter failed ({res.status_code}): {res.text[:400]}")
 
     data = res.json()
-    return data["choices"][0]["message"]["content"] if data.get("choices") else ""
+    content = data["choices"][0]["message"]["content"] if data.get("choices") else ""
+    return content
 
 
 def extract_json(text):
-    """Extract the first JSON object found in a string (handles ```json fences etc.)."""
-    fenced = re.search(r"```json\s*([\s\S]*?)```", text, re.IGNORECASE) or re.search(r"```\s*([\s\S]*?)```", text)
-    candidate = fenced.group(1) if fenced else text
+    """Extract JSON from AI response."""
+    # Try to find JSON block
+    match = re.search(r"```json\s*([\s\S]*?)```", text, re.IGNORECASE)
+    if match:
+        candidate = match.group(1)
+    else:
+        candidate = text
 
     start = candidate.find("{")
     end = candidate.rfind("}")
     if start == -1 or end == -1:
-        raise ValueError("No JSON object found in AI response")
+        raise ValueError("No JSON found in response")
 
-    return json.loads(candidate[start:end + 1])
+    json_str = candidate[start:end + 1]
+    return json.loads(json_str)
